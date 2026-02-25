@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plejaden — Webb-Teleskop Simulation</title>
+  <meta name="description" content="Die Sieben Schwestern durch ein simuliertes Weltraumteleskop betrachtet. Belichtung, Spektralanalyse und Farbmodi.">
+  
+
+  <!-- Vorsicht: diese Tailwind URL nicht in Produktion gebrauchen. Check Tailwind Config on tailwindcss.com  -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #000; }
+    #canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; cursor: crosshair; }
+    
+    .control-panel {
+      position: fixed; top: 1rem; left: 1rem;
+      background: rgba(5, 5, 10, 0.95);
+      border: 1px solid rgba(100, 150, 255, 0.15);
+      border-radius: 0.75rem; padding: 1rem;
+      z-index: 100; width: 300px;
+      max-height: calc(100vh - 2rem); overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0,0,50,0.5);
+      backdrop-filter: blur(10px);
+    }
+    
+    .info-panel {
+      position: fixed; bottom: 1rem; right: 1rem;
+      background: rgba(5, 5, 10, 0.95);
+      border: 1px solid rgba(100, 150, 255, 0.15);
+      border-radius: 0.5rem; padding: 1rem;
+      min-width: 200px; z-index: 100;
+    }
+    
+    input[type="range"] { width: 100%; accent-color: #60A5FA; height: 6px; }
+    
+    .control-btn {
+      padding: 0.4rem 0.6rem;
+      border: 1px solid rgba(100, 150, 255, 0.3);
+      border-radius: 0.375rem; background: transparent;
+      color: #60A5FA; cursor: pointer;
+      transition: all 0.2s; font-size: 0.75rem;
+    }
+    .control-btn:hover { background: rgba(100, 150, 255, 0.1); }
+    .control-btn.active { background: rgba(100, 150, 255, 0.2); border-color: #60A5FA; }
+    
+    .back-link {
+      position: fixed; top: 1rem; right: 1rem;
+      padding: 0.5rem 1rem;
+      background: rgba(5, 5, 10, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0.5rem; color: #4b5563;
+      text-decoration: none; font-size: 0.875rem;
+      z-index: 100; transition: color 0.2s;
+    }
+    .back-link:hover { color: #60A5FA; }
+    
+    .section-divider { border-top: 1px solid rgba(100, 150, 255, 0.1); margin: 0.75rem 0; padding-top: 0.75rem; }
+    
+    /* Telescope viewfinder overlay */
+    .viewfinder {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80vmin; height: 80vmin;
+      border: 2px solid rgba(100, 150, 255, 0.2);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 50;
+      box-shadow: 
+        inset 0 0 100px rgba(0, 0, 50, 0.3),
+        0 0 200px rgba(0, 0, 0, 0.8);
+    }
+    
+    .viewfinder::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at center,
+        transparent 60%,
+        rgba(0, 0, 20, 0.3) 80%,
+        rgba(0, 0, 10, 0.7) 100%
+      );
+    }
+    
+    /* Crosshairs */
+    .crosshair-h, .crosshair-v {
+      position: fixed;
+      background: rgba(100, 150, 255, 0.1);
+      z-index: 49;
+    }
+    .crosshair-h { left: 0; right: 0; top: 50%; height: 1px; }
+    .crosshair-v { top: 0; bottom: 0; left: 50%; width: 1px; }
+  </style>
+</head>
+
+<body class="text-gray-200">
+  
+  <canvas id="canvas"></canvas>
+  
+  <div class="viewfinder"></div>
+  <div class="crosshair-h"></div>
+  <div class="crosshair-v"></div>
+  
+  <a href="../ueber-mich.html" class="back-link">← Zurück</a>
+  
+  <!-- CONTROL PANEL -->
+  <div class="control-panel">
+    <h2 class="text-blue-400 font-semibold mb-1 text-lg">🔭 Plejaden (M45)</h2>
+    <p class="text-gray-600 text-xs mb-3">Webb-Teleskop Simulation · Sieben Schwestern</p>
+    
+    <!-- EXPOSURE -->
+    <div class="mb-3">
+      <label class="block text-gray-300 text-xs mb-1">Belichtung: <span id="exposure-val" class="text-blue-400">1.0</span>s</label>
+      <input type="range" id="exposure-slider" min="1" max="100" value="30">
+      <p class="text-gray-600 text-xs mt-1">Längere Belichtung = mehr Details</p>
+    </div>
+    
+    <!-- ZOOM -->
+    <div class="mb-3">
+      <label class="block text-gray-300 text-xs mb-1">Zoom: <span id="zoom-val" class="text-blue-400">100</span>%</label>
+      <input type="range" id="zoom-slider" min="50" max="400" value="100">
+    </div>
+    
+    <!-- SPECTRAL MODE -->
+    <div class="section-divider">
+      <label class="block text-gray-400 text-xs mb-2 uppercase tracking-wider">Spektralmodus</label>
+      <div class="grid grid-cols-2 gap-2">
+        <button class="control-btn active" data-mode="visible">Sichtbar</button>
+        <button class="control-btn" data-mode="infrared">Infrarot</button>
+        <button class="control-btn" data-mode="hydrogen">H-Alpha</button>
+        <button class="control-btn" data-mode="combined">Kombi</button>
+      </div>
+    </div>
+    
+    <!-- COLOR PALETTE -->
+    <div class="section-divider">
+      <label class="block text-gray-400 text-xs mb-2 uppercase tracking-wider">Farbpalette</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button class="control-btn active" data-palette="natural">Natürlich</button>
+        <button class="control-btn" data-palette="hubble">Hubble</button>
+        <button class="control-btn" data-palette="webb">Webb</button>
+        <button class="control-btn" data-palette="thermal">Thermal</button>
+        <button class="control-btn" data-palette="cosmic">Cosmic</button>
+        <button class="control-btn" data-palette="mono">Mono</button>
+      </div>
+    </div>
+    
+    <!-- CONTRAST & BRIGHTNESS -->
+    <div class="section-divider">
+      <div class="mb-3">
+        <label class="block text-gray-300 text-xs mb-1">Kontrast: <span id="contrast-val" class="text-blue-400">1.0</span></label>
+        <input type="range" id="contrast-slider" min="50" max="200" value="100">
+      </div>
+      
+      <div class="mb-3">
+        <label class="block text-gray-300 text-xs mb-1">Helligkeit: <span id="brightness-val" class="text-blue-400">1.0</span></label>
+        <input type="range" id="brightness-slider" min="50" max="150" value="100">
+      </div>
+      
+      <div>
+        <label class="block text-gray-300 text-xs mb-1">Bloom/Glow: <span id="bloom-val" class="text-blue-400">50</span>%</label>
+        <input type="range" id="bloom-slider" min="0" max="100" value="50">
+      </div>
+    </div>
+    
+    <!-- OPTIONS -->
+    <div class="section-divider">
+      <div class="space-y-2 text-xs">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="show-labels" checked class="accent-blue-400">
+          <span class="text-gray-300">Sternbezeichnungen</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="show-nebula" checked class="accent-blue-400">
+          <span class="text-gray-300">Reflexionsnebel</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="show-diffraction" checked class="accent-blue-400">
+          <span class="text-gray-300">Beugungsmuster</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="show-viewfinder" checked class="accent-blue-400">
+          <span class="text-gray-300">Teleskop-Rahmen</span>
+        </label>
+      </div>
+    </div>
+    
+    <button id="capture-btn" class="control-btn w-full mt-3">📸 Screenshot</button>
+  </div>
+  
+  <!-- INFO PANEL -->
+  <div class="info-panel">
+    <h3 class="text-blue-400 font-semibold text-sm mb-2">Objektdaten</h3>
+    <div class="text-xs space-y-1 text-gray-400">
+      <div>Katalog: <span class="text-gray-200">Messier 45</span></div>
+      <div>Entfernung: <span class="text-gray-200">444 Lichtjahre</span></div>
+      <div>Alter: <span class="text-gray-200">~100 Mio. Jahre</span></div>
+      <div>Sterne: <span class="text-gray-200">~1000 (9 hell)</span></div>
+      <div class="border-t border-white/10 pt-2 mt-2">
+        <span class="text-blue-300" id="hover-star">—</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  /**
+   * Pleiades Telescope Simulation
+   * 
+   * Features:
+   * - Realistic star cluster with main stars
+   * - Reflection nebula (blue haze)
+   * - Diffraction spikes (Webb-style)
+   * - Multiple spectral modes
+   * - Color palettes (Hubble, Webb, thermal)
+   * - Exposure simulation
+   */
+  (function() {
+    'use strict';
+    
+    // === PLEIADES STARS ===
+    // The Seven Sisters + main cluster stars
+    // Position (relative), apparent magnitude, spectral type
+    const STARS = [
+      // The Seven Sisters (main)
+      { name: 'Alcyone (η)', x: 0, y: 0, mag: 2.87, type: 'B7III', main: true },
+      { name: 'Atlas (27)', x: 0.15, y: -0.12, mag: 3.63, type: 'B8III', main: true },
+      { name: 'Electra (17)', x: -0.08, y: 0.1, mag: 3.70, type: 'B6III', main: true },
+      { name: 'Maia (20)', x: 0.05, y: 0.08, mag: 3.87, type: 'B8III', main: true },
+      { name: 'Merope (23)', x: 0.03, y: -0.05, mag: 4.18, type: 'B6IV', main: true },
+      { name: 'Taygeta (19)', x: -0.1, y: 0.02, mag: 4.30, type: 'B6V', main: true },
+      { name: 'Pleione (28)', x: 0.18, y: -0.1, mag: 5.09, type: 'B8V', main: true },
+      { name: 'Celaeno (16)', x: -0.12, y: 0.05, mag: 5.45, type: 'B7IV', main: true },
+      { name: 'Sterope (21)', x: -0.05, y: -0.08, mag: 5.76, type: 'B8V', main: true },
+      
+      // Additional cluster members
+      { name: '18 Tau', x: -0.06, y: 0.12, mag: 5.64, type: 'B8V' },
+      { name: '22 Tau', x: 0.08, y: -0.02, mag: 6.43, type: 'A0V' },
+      { name: 'HD 23568', x: -0.15, y: -0.05, mag: 6.81, type: 'B9V' },
+      { name: 'HD 23753', x: 0.12, y: 0.06, mag: 5.44, type: 'B8V' },
+      { name: 'HD 23629', x: -0.02, y: 0.15, mag: 6.99, type: 'A2V' },
+    ];
+    
+    // Generate background cluster stars
+    for (let i = 0; i < 200; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 0.5;
+      STARS.push({
+        name: null,
+        x: Math.cos(angle) * dist,
+        y: Math.sin(angle) * dist,
+        mag: 7 + Math.random() * 5,
+        type: 'A0V'
+      });
+    }
+    
+    // === COLOR PALETTES ===
+    // Diffraction spikes: Hubble = 4 (cross from secondary mirror struts)
+    //                     Webb = 6 (hexagonal mirror segments)
+    //                     Ground telescopes = 4-8 depending on spider vane design
+    const PALETTES = {
+      natural: {
+        name: 'Natürlich',
+        starColor: (type, mag) => {
+          if (type.startsWith('B')) return { h: 220, s: 30, l: 90 };
+          if (type.startsWith('A')) return { h: 210, s: 20, l: 85 };
+          return { h: 40, s: 20, l: 80 };
+        },
+        nebulaHue: 220,
+        nebulaSat: 40,
+        spikeCount: 4,  // Ground-based / generic
+        spikeRotation: Math.PI / 4,  // 45° offset
+      },
+      hubble: {
+        name: 'Hubble',
+        starColor: (type, mag) => ({ h: 200 + Math.random() * 40, s: 60, l: 85 }),
+        nebulaHue: 240,
+        nebulaSat: 60,
+        spikeCount: 4,  // Hubble has 4-point cross pattern
+        spikeRotation: 0,  // Vertical/horizontal cross
+      },
+      webb: {
+        name: 'Webb (Infrarot)',
+        starColor: (type, mag) => ({ h: 30 + Math.random() * 30, s: 70, l: 80 }),
+        nebulaHue: 30,
+        nebulaSat: 50,
+        spikeCount: 6,  // Webb has 6-point hexagonal pattern
+        spikeRotation: 0,
+      },
+      thermal: {
+        name: 'Thermal',
+        starColor: (type, mag) => {
+          const temp = 10 - mag;
+          return { h: temp * 20, s: 80, l: 60 + temp * 5 };
+        },
+        nebulaHue: 280,
+        nebulaSat: 50,
+        spikeCount: 6,
+        spikeRotation: Math.PI / 6,
+      },
+      cosmic: {
+        name: 'Cosmic',
+        starColor: (type, mag) => ({ h: 280 + Math.random() * 60, s: 70, l: 85 }),
+        nebulaHue: 300,
+        nebulaSat: 60,
+        spikeCount: 8,  // Artistic choice
+        spikeRotation: Math.PI / 8,
+      },
+      mono: {
+        name: 'Mono',
+        starColor: () => ({ h: 0, s: 0, l: 90 }),
+        nebulaHue: 0,
+        nebulaSat: 0,
+        spikeCount: 4,
+        spikeRotation: 0,
+      },
+    };
+    
+    // === STATE ===
+    const state = {
+      exposure: 0.3,
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
+      contrast: 1,
+      brightness: 1,
+      bloom: 0.5,
+      spectralMode: 'visible',
+      palette: 'natural',
+      showLabels: true,
+      showNebula: true,
+      showDiffraction: true,
+      showViewfinder: true,
+      isDragging: false,
+      lastX: 0, lastY: 0,
+      hoverStar: null,
+    };
+    
+    // === CANVAS ===
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      render();
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // === RENDER ===
+    function render() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2 + state.offsetX;
+      const cy = h / 2 + state.offsetY;
+      const scale = Math.min(w, h) * 0.4 * state.zoom;
+      const palette = PALETTES[state.palette];
+      
+      // Clear
+      ctx.fillStyle = '#000005';
+      ctx.fillRect(0, 0, w, h);
+      
+      // === NEBULA (Reflection nebula around main stars) ===
+      if (state.showNebula) {
+        // Multiple layers for depth
+        for (const star of STARS.filter(s => s.main)) {
+          const x = cx + star.x * scale;
+          const y = cy + star.y * scale;
+          const size = (8 - star.mag) * 30 * state.exposure * state.zoom;
+          
+          const nebula = ctx.createRadialGradient(x, y, 0, x, y, size);
+          const alpha = 0.03 * state.exposure * state.brightness;
+          
+          nebula.addColorStop(0, `hsla(${palette.nebulaHue}, ${palette.nebulaSat}%, 70%, ${alpha * 2})`);
+          nebula.addColorStop(0.3, `hsla(${palette.nebulaHue}, ${palette.nebulaSat}%, 50%, ${alpha})`);
+          nebula.addColorStop(0.7, `hsla(${palette.nebulaHue + 20}, ${palette.nebulaSat}%, 40%, ${alpha * 0.5})`);
+          nebula.addColorStop(1, 'transparent');
+          
+          ctx.fillStyle = nebula;
+          ctx.fillRect(x - size, y - size, size * 2, size * 2);
+        }
+        
+        // Interstellar dust lanes (subtle)
+        ctx.save();
+        ctx.globalAlpha = 0.1 * state.exposure;
+        for (let i = 0; i < 5; i++) {
+          const angle = i * 0.7 + 0.3;
+          ctx.beginPath();
+          ctx.moveTo(cx - 200 * Math.cos(angle), cy - 200 * Math.sin(angle));
+          ctx.quadraticCurveTo(cx, cy, cx + 300 * Math.cos(angle + 0.5), cy + 300 * Math.sin(angle + 0.5));
+          ctx.strokeStyle = `hsla(${palette.nebulaHue}, ${palette.nebulaSat}%, 60%, 0.5)`;
+          ctx.lineWidth = 50 * state.zoom;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      
+      // === STARS ===
+      for (const star of STARS) {
+        const x = cx + star.x * scale;
+        const y = cy + star.y * scale;
+        
+        // Skip if off-screen
+        if (x < -50 || x > w + 50 || y < -50 || y > h + 50) continue;
+        
+        // Brightness based on magnitude and exposure
+        const brightness = Math.pow(2.512, 5 - star.mag) * state.exposure * state.brightness;
+        const baseSize = Math.max(1, (6 - star.mag) * state.zoom * 0.8);
+        const size = baseSize * Math.min(3, brightness);
+        
+        // Color
+        const color = palette.starColor(star.type, star.mag);
+        
+        // === DIFFRACTION SPIKES (palette-dependent count) ===
+        // Hubble: 4-point (cross), Webb: 6-point, others: varies
+        if (state.showDiffraction && star.mag < 6 && brightness > 0.5) {
+          const spikeLength = size * 8 * state.bloom;
+          const spikeWidth = size * 0.3;
+          const spikeCount = palette.spikeCount || 6;
+          const spikeRotation = palette.spikeRotation || 0;
+          
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, brightness * 0.4) * state.contrast;
+          
+          for (let i = 0; i < spikeCount; i++) {
+            const angle = (i * Math.PI * 2 / spikeCount) + spikeRotation;
+            
+            const gradient = ctx.createLinearGradient(
+              x, y,
+              x + Math.cos(angle) * spikeLength,
+              y + Math.sin(angle) * spikeLength
+            );
+            gradient.addColorStop(0, `hsla(${color.h}, ${color.s}%, ${color.l}%, 0.8)`);
+            gradient.addColorStop(0.2, `hsla(${color.h}, ${color.s}%, ${color.l}%, 0.3)`);
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(
+              x + Math.cos(angle) * spikeLength,
+              y + Math.sin(angle) * spikeLength
+            );
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = spikeWidth;
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        
+        // === BLOOM ===
+        if (state.bloom > 0 && brightness > 0.3) {
+          const bloomSize = size * 4 * state.bloom;
+          const bloom = ctx.createRadialGradient(x, y, 0, x, y, bloomSize);
+          bloom.addColorStop(0, `hsla(${color.h}, ${color.s}%, ${color.l}%, ${Math.min(0.5, brightness * 0.2)})`);
+          bloom.addColorStop(0.5, `hsla(${color.h}, ${color.s}%, ${color.l - 20}%, ${Math.min(0.2, brightness * 0.05)})`);
+          bloom.addColorStop(1, 'transparent');
+          
+          ctx.fillStyle = bloom;
+          ctx.fillRect(x - bloomSize, y - bloomSize, bloomSize * 2, bloomSize * 2);
+        }
+        
+        // === STAR CORE ===
+        const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+        coreGradient.addColorStop(0, `hsla(${color.h}, ${Math.max(0, color.s - 20)}%, 100%, ${Math.min(1, brightness * state.contrast)})`);
+        coreGradient.addColorStop(0.3, `hsla(${color.h}, ${color.s}%, ${color.l}%, ${Math.min(1, brightness * 0.8 * state.contrast)})`);
+        coreGradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = coreGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Store screen position
+        star._x = x;
+        star._y = y;
+        star._size = size;
+        
+        // === LABEL ===
+        if (state.showLabels && star.name && star.main) {
+          ctx.fillStyle = `rgba(150, 180, 255, ${Math.min(0.8, brightness * 0.5)})`;
+          ctx.font = '10px system-ui';
+          ctx.textAlign = 'left';
+          ctx.fillText(star.name, x + size + 5, y + 3);
+        }
+      }
+      
+      // === VIEWFINDER OVERLAY ===
+      document.querySelector('.viewfinder').style.display = state.showViewfinder ? 'block' : 'none';
+      document.querySelector('.crosshair-h').style.display = state.showViewfinder ? 'block' : 'none';
+      document.querySelector('.crosshair-v').style.display = state.showViewfinder ? 'block' : 'none';
+    }
+    
+    // === CONTROLS ===
+    document.getElementById('exposure-slider').addEventListener('input', function() {
+      state.exposure = parseInt(this.value) / 30;
+      document.getElementById('exposure-val').textContent = state.exposure.toFixed(1);
+      render();
+    });
+    
+    document.getElementById('zoom-slider').addEventListener('input', function() {
+      state.zoom = parseInt(this.value) / 100;
+      document.getElementById('zoom-val').textContent = parseInt(this.value);
+      render();
+    });
+    
+    document.getElementById('contrast-slider').addEventListener('input', function() {
+      state.contrast = parseInt(this.value) / 100;
+      document.getElementById('contrast-val').textContent = state.contrast.toFixed(1);
+      render();
+    });
+    
+    document.getElementById('brightness-slider').addEventListener('input', function() {
+      state.brightness = parseInt(this.value) / 100;
+      document.getElementById('brightness-val').textContent = state.brightness.toFixed(1);
+      render();
+    });
+    
+    document.getElementById('bloom-slider').addEventListener('input', function() {
+      state.bloom = parseInt(this.value) / 100;
+      document.getElementById('bloom-val').textContent = parseInt(this.value);
+      render();
+    });
+    
+    // Spectral mode
+    document.querySelectorAll('[data-mode]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        state.spectralMode = this.dataset.mode;
+        document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        
+        // Adjust palette based on mode
+        if (state.spectralMode === 'infrared') {
+          state.palette = 'webb';
+        } else if (state.spectralMode === 'hydrogen') {
+          state.palette = 'cosmic';
+        }
+        
+        render();
+      });
+    });
+    
+    // Palette
+    document.querySelectorAll('[data-palette]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        state.palette = this.dataset.palette;
+        document.querySelectorAll('[data-palette]').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        render();
+      });
+    });
+    
+    // Checkboxes
+    document.getElementById('show-labels').addEventListener('change', function() { 
+      state.showLabels = this.checked; render(); 
+    });
+    document.getElementById('show-nebula').addEventListener('change', function() { 
+      state.showNebula = this.checked; render(); 
+    });
+    document.getElementById('show-diffraction').addEventListener('change', function() { 
+      state.showDiffraction = this.checked; render(); 
+    });
+    document.getElementById('show-viewfinder').addEventListener('change', function() { 
+      state.showViewfinder = this.checked; render(); 
+    });
+    
+    // Screenshot
+    document.getElementById('capture-btn').addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = `pleiades_${state.palette}_${Date.now()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+    
+    // Mouse controls
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      state.zoom = Math.max(0.5, Math.min(4, state.zoom + delta));
+      document.getElementById('zoom-slider').value = Math.round(state.zoom * 100);
+      document.getElementById('zoom-val').textContent = Math.round(state.zoom * 100);
+      render();
+    }, { passive: false });
+    
+    canvas.addEventListener('mousedown', (e) => {
+      state.isDragging = true;
+      state.lastX = e.clientX;
+      state.lastY = e.clientY;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      if (state.isDragging) {
+        state.offsetX += e.clientX - state.lastX;
+        state.offsetY += e.clientY - state.lastY;
+        state.lastX = e.clientX;
+        state.lastY = e.clientY;
+        render();
+      }
+      
+      // Hover detection
+      let found = null;
+      for (const star of STARS) {
+        if (!star.name) continue;
+        const dx = e.clientX - star._x;
+        const dy = e.clientY - star._y;
+        if (Math.sqrt(dx*dx + dy*dy) < star._size + 10) {
+          found = star;
+          break;
+        }
+      }
+      
+      if (found !== state.hoverStar) {
+        state.hoverStar = found;
+        document.getElementById('hover-star').textContent = found ? 
+          `${found.name} (${found.type}, mag ${found.mag})` : '—';
+      }
+    });
+    
+    canvas.addEventListener('mouseup', () => state.isDragging = false);
+    canvas.addEventListener('mouseleave', () => state.isDragging = false);
+    
+    // === INIT ===
+    console.log('Pleiades Telescope Simulation starting...');
+    render();
+    
+  })();
+  </script>
+
+</body>
+</html>
