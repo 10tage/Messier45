@@ -17,3 +17,7 @@ Demo auf Neocities: [10tage.neocities.org](https://10tage.neocities.org)
 ---
 
 ![Plejaden Telescope Simulation Screenshot Natürliches Licht](https://github.com/10tage/Messier45/blob/main/pleiades_natural_1772137165970.png)
+
+---
+
+![Plejaden Telescope Simulation Screenshot Mono](https://github.com/10tage/Messier45/blob/main/pleiades_mono_1772228267366.png)
