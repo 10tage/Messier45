@@ -21,3 +21,12 @@ Demo auf Neocities: [10tage.neocities.org](https://10tage.neocities.org)
 ---
 
 ![Plejaden Telescope Simulation Screenshot Mono](https://github.com/10tage/Messier45/blob/main/pleiades_mono_1772228267366.png)
+
+---
+
+![Plejaden Telescope Simulation Screenshot Hubble](https://github.com/10tage/Messier45/blob/main/pleiades_hubble_1772309910735.png)
+
+---
+
+![Plejaden Telescope Simulation Screenshot Hubble Zoomed With Names](https://github.com/10tage/Messier45/blob/main/pleiades_hubble_1772309976872.png)
+
