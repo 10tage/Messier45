@@ -1,4 +1,5 @@
 # Messier45
+
 Objektdaten 
 Katalog: Messier 45 
 Entfernung: 444 
